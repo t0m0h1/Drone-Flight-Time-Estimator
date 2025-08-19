@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Drone Flight Time Estimator</title>
+  <style>
+    :root{
+      --bg:#0b0e14; --panel:#101521; --muted:#96a0b5; --text:#e6edf7; --accent:#6aa6ff; --accent-2:#68f; --danger:#ff6a6a; --ok:#4ad66d;
+      --ring: rgba(106,166,255,.5);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -10%, #162036 20%, transparent 60%), var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1000px; margin:32px auto; padding:16px}
+    h1{font-size:clamp(22px, 3vw, 34px); margin:0 0 8px; letter-spacing:.2px}
+    p.sub{margin:0 0 24px; color:var(--muted)}
+
+    .grid{display:grid; gap:16px}
+    @media(min-width:900px){ .grid{grid-template-columns: 1.1fr .9fr}}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); box-shadow:0 6px 40px rgba(0,0,0,.25); border-radius:16px}
+    .card .hd{padding:18px 18px 0; font-weight:650; letter-spacing:.2px}
+    .card .bd{padding:18px}
+    .muted{color:var(--muted)}
+
+    .row{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+    .row3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px}
+    .row4{display:grid; grid-template-columns: repeat(4, 1fr); gap:12px}
+    .row + .row, .row3 + .row3, .row4 + .row4{margin-top:12px}
+
+    label{display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--muted); margin-bottom:6px}
+    .unit{opacity:.8; font-variant-numeric: tabular-nums}
+
+    input[type="number"], select{
+      width:100%; padding:12px 12px; background:#0f1524; color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:12px; outline:none; font-size:15px;
+    }
+    input[type="number"]:focus, select:focus{border-color:var(--accent); box-shadow:0 0 0 4px var(--ring)}
+
+    .hint{font-size:12px; color:var(--muted); margin-top:6px}
+    .btns{display:flex; gap:12px; margin-top:12px; flex-wrap:wrap}
+    button{
+      appearance:none; border:none; padding:12px 14px; background:linear-gradient(180deg, var(--accent), var(--accent-2)); color:white; border-radius:12px; font-weight:650; letter-spacing:.2px; cursor:pointer;
+      box-shadow:0 8px 30px rgba(106,166,255,.4);
+    }
+    button.secondary{background:transparent; color:var(--text); border:1px solid rgba(255,255,255,.16)}
+
+    .result{
+      display:grid; gap:14px; align-content:start
+    }
+    .big{
+      font-size:clamp(28px, 5vw, 48px); font-weight:800; letter-spacing:.5px
+    }
+    .pill{display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); padding:8px 10px; border-radius:999px; font-size:12px; color:var(--muted)}
+
+    details{border:1px solid rgba(255,255,255,.12); border-radius:12px; overflow:hidden}
+    summary{cursor:pointer; list-style:none; padding:12px 14px; background:#0f1524; user-select:none}
+    summary::-webkit-details-marker{display:none}
+    .breakdown{padding:12px 14px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01))}
+    .kvs{display:grid; gap:8px}
+    .kv{display:flex; justify-content:space-between; gap:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .kv .k{color:#b7c3da}
+    .kv .v{color:#e9f1ff}
+
+    .footer{margin-top:16px; color:var(--muted); font-size:12px}
+    .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#0f1524; border:1px solid rgba(255,255,255,.12); margin-left:8px}
+
+    .inline-help{font-size:12px; color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Drone Flight Time Estimator</h1>
+    <p class="sub">Quickly estimate a <strong>max safe flight time</strong> for on-site conditions. Wind in <strong>mph</strong>, altitude in <strong>feet (ASL)</strong>. Presets provided for Mavic 3 Pro, Air 2S, Mini 4 Pro — or enter your own model.</p>
+
+    <div class="grid">
+      <!-- Inputs -->
+      <div class="card">
+        <div class="hd">Inputs</div>
+        <div class="bd">
+          <div class="row">
+            <div>
+              <label>
+                <span>Preset model</span>
+                <span class="unit">M3P / Air 2S / Mini 4 Pro</span>
+              </label>
+              <select id="preset">
+                <option value="custom">Custom model…</option>
+                <option value="m3p">DJI Mavic 3 Pro</option>
+                <option value="air2s">DJI Air 2S</option>
+                <option value="mini4pro">DJI Mini 4 Pro</option>
+              </select>
+              <div class="hint">Choosing a preset will pre-fill base flight time and reference takeoff weight.</div>
+            </div>
+            <div>
+              <label>
+                <span>Model name</span>
+                <span class="unit">free text</span>
+              </label>
+              <input id="modelName" type="text" placeholder="e.g., Custom Quad 6S" />
+            </div>
+          </div>
+
+          <div class="row3" style="margin-top:12px">
+            <div>
+              <label>
+                <span>Base/advertised flight time</span>
+                <span class="unit">minutes</span>
+              </label>
+              <input id="baseTime" type="number" min="1" step="0.1" placeholder="e.g., 43" />
+            </div>
+            <div>
+              <label>
+                <span>Reference takeoff weight</span>
+                <span class="unit">grams</span>
+              </label>
+              <input id="baseWeight" type="number" min="1" step="1" placeholder="e.g., 958" />
+            </div>
+            <div>
+              <label>
+                <span>Battery health</span>
+                <span class="unit">% of original</span>
+              </label>
+              <input id="batteryHealth" type="number" min="50" max="100" step="1" value="100" />
+            </div>
+          </div>
+
+          <hr style="border:0; border-top:1px solid rgba(255,255,255,.08); margin:16px 0">
+
+          <div class="row3">
+            <div>
+              <label>
+                <span>Wind speed (sustained)</span>
+                <span class="unit">mph</span>
+              </label>
+              <input id="wind" type="number" min="0" step="0.1" value="10" />
+            </div>
+            <div>
+              <label>
+                <span>Gustiness (gust − sustained)</span>
+                <span class="unit">mph</span>
+              </label>
+              <input id="gustDelta" type="number" min="0" step="0.1" value="5" />
+              <div class="hint">If you only know gust speed, subtract sustained to get this value.</div>
+            </div>
+            <div>
+              <label>
+                <span>Temperature</span>
+                <span class="unit">°C</span>
+              </label>
+              <input id="temp" type="number" step="0.1" value="12" />
+            </div>
+          </div>
+
+          <div class="row3" style="margin-top:12px">
+            <div>
+              <label>
+                <span>Takeoff altitude</span>
+                <span class="unit">feet (ASL)</span>
+              </label>
+              <input id="altitudeFt" type="number" min="0" step="1" value="500" />
+            </div>
+            <div>
+              <label>
+                <span>Payload</span>
+                <span class="unit">grams</span>
+              </label>
+              <input id="payload" type="number" min="0" step="1" value="0" />
+            </div>
+            <div>
+              <label>
+                <span>Safety reserve</span>
+                <span class="unit">% of estimate</span>
+              </label>
+              <input id="reserve" type="number" min="0" max="50" step="1" value="20" />
+              <div class="hint">Reserve is held back from the estimate to keep a buffer for RTH/contingency.</div>
+            </div>
+          </div>
+
+          <div class="btns">
+            <button id="estimateBtn">Estimate Flight Time</button>
+            <button class="secondary" id="resetBtn" type="button">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="card">
+        <div class="hd">Result</div>
+        <div class="bd result">
+          <div class="pill" id="modelPill">Model: <strong id="modelOut">—</strong></div>
+          <div>
+            <div class="big" id="finalTime">—</div>
+            <div class="muted">Estimated <strong>max safe flight time</strong> under the specified conditions.</div>
+          </div>
+
+          <details>
+            <summary>See factor breakdown</summary>
+            <div class="breakdown">
+              <div class="kvs" id="breakdownList"></div>
+            </div>
+          </details>
+
+          <div class="footer">
+            This tool uses a transparent, physics-inspired heuristic (not a guarantee). Always fly within manufacturer limits and your operational risk assessment.
+            <span class="badge">Wind: mph</span>
+            <span class="badge">Altitude: ft (ASL)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Preset specs (approximate public figures) ---
+    const PRESETS = {
+      m3p: { name: 'DJI Mavic 3 Pro', baseTime: 43, baseWeight: 958 }, // mins, grams
+      air2s: { name: 'DJI Air 2S', baseTime: 31, baseWeight: 595 },
+      mini4pro: { name: 'DJI Mini 4 Pro', baseTime: 34, baseWeight: 249 }
+    };
+
+    // --- Elements ---
+    const el = (id) => document.getElementById(id);
+    const preset = el('preset');
+    const modelName = el('modelName');
+    const baseTime = el('baseTime');
+    const baseWeight = el('baseWeight');
+    const batteryHealth = el('batteryHealth');
+    const wind = el('wind');
+    const gustDelta = el('gustDelta');
+    const temp = el('temp');
+    const altitudeFt = el('altitudeFt');
+    const payload = el('payload');
+    const reserve = el('reserve');
+
+    const modelOut = el('modelOut');
+    const finalTime = el('finalTime');
+    const breakdownList = el('breakdownList');
+
+    // --- Helpers ---
+    function clamp(v, min, max){return Math.max(min, Math.min(max, v));}
+    function round2(v){return Math.round(v*100)/100}
+
+    function applyPreset(key){
+      if(!key || key==='custom'){ return; }
+      const p = PRESETS[key];
+      modelName.value = p.name;
+      baseTime.value = p.baseTime;
+      baseWeight.value = p.baseWeight;
+      batteryHealth.value = 100;
+      payload.value = 0;
+    }
+
+    preset.addEventListener('change', (e)=>applyPreset(e.target.value));
+
+    // Initialise with Mavic 3 Pro for convenience
+    preset.value = 'm3p';
+    applyPreset('m3p');
+    updateModelPill();
+
+    function updateModelPill(){
+      modelOut.textContent = modelName.value || '—';
+    }
+
+    modelName.addEventListener('input', updateModelPill);
+
+    // --- Core heuristic model ---
+    function estimate(){
+      const model = modelName.value || 'Custom Model';
+      const baseMinutes = Number(baseTime.value || 0);
+      const refWeightG = Number(baseWeight.value || 0);
+      const healthPct = clamp(Number(batteryHealth.value || 100), 50, 100);
+      const windMph = Math.max(0, Number(wind.value || 0));
+      const gustMph = Math.max(0, Number(gustDelta.value || 0));
+      const tC = Number(temp.value || 20);
+      const altFt = Math.max(0, Number(altitudeFt.value || 0));
+      const payloadG = Math.max(0, Number(payload.value || 0));
+      const reservePct = clamp(Number(reserve.value || 0), 0, 50);
+
+      if(!baseMinutes || !refWeightG){
+        alert('Please enter base flight time and reference takeoff weight (use the preset for convenience).');
+        return;
+      }
+
+      // 1) Battery health multiplier
+      const m_batt = healthPct/100; // linear
+
+      // 2) Weight & payload multiplier (diminishing impact exponent)
+      const payloadRatio = payloadG / refWeightG; // 0 .. ~
+      const m_weight = Math.pow(1/(1 + payloadRatio), 0.6); // cap implicitly
+
+      // 3) Wind multiplier (sustained + gust penalty). Caps to avoid negative.
+      // Heuristic: up to ~45% reduction at very windy/gusty (e.g., 30mph + 20mph gust delta)
+      const windTerm = 0.35 * (windMph/40);   // up to ~0.35 when 40 mph
+      const gustTerm = 0.15 * (gustMph/20);   // up to ~0.15 when 20 mph gust delta
+      const windPenalty = clamp(windTerm + gustTerm, 0, 0.45);
+      const m_wind = 1 - windPenalty;
+
+      // 4) Temperature multiplier
+      // Below 20°C: lose ~0.8% per °C. Above 35°C: lose ~0.5% per °C. Max 25% penalty.
+      let tempPenalty = 0;
+      if(tC < 20){ tempPenalty = clamp((20 - tC) * 0.008, 0, 0.25); }
+      else if(tC > 35){ tempPenalty = clamp((tC - 35) * 0.005, 0, 0.25); }
+      const m_temp = 1 - tempPenalty;
+
+      // 5) Altitude multiplier
+      // ~3% per 1000 ft due to thinner air / more throttle needed. Max 40% penalty.
+      const altPenalty = clamp((altFt / 1000) * 0.03, 0, 0.40);
+      const m_alt = 1 - altPenalty;
+
+      // Combine
+      const raw = baseMinutes * m_batt * m_weight * m_wind * m_temp * m_alt;
+      const final = Math.max(0, raw * (1 - reservePct/100));
+
+      // UI updates
+      modelOut.textContent = model;
+      finalTime.textContent = `${round2(final)} min`;
+
+      // Breakdown
+      const rows = [
+        {k:'Base time', v: `${baseMinutes} min`},
+        {k:'Battery health', v:`${healthPct}%  → × ${round2(m_batt)}`},
+        {k:'Payload vs weight', v:`payload ${payloadG} g / ${refWeightG} g  → × ${round2(m_weight)}`},
+        {k:'Wind effect', v:`wind ${windMph} mph, gust Δ ${gustMph} mph  → × ${round2(m_wind)} (−${Math.round(windPenalty*100)}%)`},
+        {k:'Temperature', v:`${tC} °C → × ${round2(m_temp)} (−${Math.round(tempPenalty*100)}%)`},
+        {k:'Altitude', v:`${altFt} ft ASL → × ${round2(m_alt)} (−${Math.round(altPenalty*100)}%)`},
+        {k:'Subtotal (no reserve)', v:`${round2(raw)} min`},
+        {k:'Safety reserve', v:`${reservePct}% held back`}
+      ];
+      breakdownList.innerHTML = rows.map(r=>`<div class="kv"><div class="k">${r.k}</div><div class="v">${r.v}</div></div>`).join('');
+    }
+
+    document.getElementById('estimateBtn').addEventListener('click', estimate);
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      preset.value = 'm3p';
+      applyPreset('m3p');
+      wind.value = 10; gustDelta.value = 5; temp.value = 12; altitudeFt.value = 500; payload.value = 0; reserve.value = 20; batteryHealth.value = 100;
+      updateModelPill();
+      finalTime.textContent = '—';
+      breakdownList.innerHTML = '';
+    });
+
+    // Run once to populate model pill
+    estimate();
+  </script>
+</body>
+</html>
